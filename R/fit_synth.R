@@ -34,15 +34,20 @@ make_V_matrix <- function(t0, V) {
 #'          \item{"l2_imbalance"}{Imbalance in pre-period outcomes, measured by the L2 norm}
 #'          \item{"scaled_l2_imbalance"}{L2 imbalance scaled by L2 imbalance of uniform weights}
 #' }
-fit_synth_formatted <- function(synth_data, V = NULL) {
-
+fit_synth_formatted <- function(synth_data, V = NULL, warm_start = NULL) {
 
     t0 <- dim(synth_data$Z0)[1]
-    ## if no  is supplied, set equal to 1
+    ## if no V is supplied, set equal to I
 
     V <- make_V_matrix(t0, V)
 
-    weights <- synth_qp(synth_data$X1, t(synth_data$X0), V)
+    weights <- synth_qp(
+      X1         = synth_data$X1,
+      X0         = t(synth_data$X0),
+      V          = V,
+      warm_start = warm_start   # <--- NEW
+    )
+
     l2_imbalance <- sqrt(sum((synth_data$Z0 %*% weights - synth_data$Z1)^2))
 
     ## primal objective value scaled by least squares difference for mean
@@ -50,32 +55,57 @@ fit_synth_formatted <- function(synth_data, V = NULL) {
     unif_l2_imbalance <- sqrt(sum((synth_data$Z0 %*% uni_w - synth_data$Z1)^2))
     scaled_l2_imbalance <- l2_imbalance / unif_l2_imbalance
 
-    return(list(weights=weights,
-                l2_imbalance=l2_imbalance,
-                scaled_l2_imbalance=scaled_l2_imbalance))
+    return(list(weights = weights,
+                l2_imbalance = l2_imbalance,
+                scaled_l2_imbalance = scaled_l2_imbalance))
 }
+
 
 #' Solve the synth QP directly
 #' @param X1 Target vector
 #' @param X0 Matrix of control outcomes
 #' @param V Scaling matrix
 #' @noRd
-synth_qp <- function(X1, X0, V) {
-    
+synth_qp <- function(X1, X0, V, warm_start = NULL) {
+
     Pmat <- X0 %*% V %*% t(X0)
     qvec <- - t(X1) %*% V %*% t(X0)
 
     n0 <- nrow(X0)
+
     A <- rbind(rep(1, n0), diag(n0))
     l <- c(1, numeric(n0))
     u <- c(1, rep(1, n0))
 
-    settings = osqp::osqpSettings(verbose = FALSE,
-                                  eps_rel = 1e-8,
-                                  eps_abs = 1e-8)
-    sol <- osqp::solve_osqp(P = Pmat, q = qvec,
-                            A = A, l = l, u = u, 
-                            pars = settings)
+    settings <- osqp::osqpSettings(
+      verbose = FALSE,
+      eps_rel = 1e-8,
+      eps_abs = 1e-8
+    )
+
+    # Build OSQP model instead of one-shot solve
+    model <- osqp::osqp(
+      P    = Pmat,
+      q    = as.numeric(qvec),
+      A    = A,
+      l    = l,
+      u    = u,
+      pars = settings
+    )
+
+    # Optional warm start
+    if (!is.null(warm_start)) {
+      warm_start <- as.numeric(warm_start)
+      if (length(warm_start) == n0) {
+        model$warm_start(x = warm_start)
+      } else {
+        warning("warm_start length (", length(warm_start),
+                ") != number of donors (", n0, "); ignoring warm_start.")
+      }
+    }
+
+    sol <- model$Solve()
 
     return(sol$x)
 }
+
