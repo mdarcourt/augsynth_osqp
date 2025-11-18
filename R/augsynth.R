@@ -32,10 +32,14 @@
 #'         }
 #' @export
 single_augsynth <- function(form, unit, time, t_int, data,
-                     progfunc = "ridge",
-                     scm=T,
+                     progfunc = c("Ridge", "None", "EN", "RF", "GSYN", "MCP",
+                                  "CITS", "CausalImpact"),
+                     scm = TRUE,
                      fixedeff = FALSE,
-                     cov_agg=NULL, ...) {
+                     cov_agg = NULL,
+                     warm_start_weights = NULL,   # <--- NEW
+                     ...) {
+
     call_name <- match.call()
 
     form <- Formula::Formula(form)
@@ -60,8 +64,13 @@ single_augsynth <- function(form, unit, time, t_int, data,
     }
     
     # fit augmented SCM
-    augsynth <- fit_augsynth_internal(wide, synth_data, Z, progfunc, 
-                                      scm, fixedeff, ...)
+    augsynth <- fit_augsynth_internal(
+      wide, synth_data, Z, progfunc,
+      scm, fixedeff,
+      warm_start_weights = warm_start_weights,   # <--- NEW
+      ...
+    )
+
     
     # add some extra data
     augsynth$data$time <- data %>% distinct(!!time) %>%
