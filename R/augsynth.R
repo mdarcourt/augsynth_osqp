@@ -122,40 +122,61 @@ fit_augsynth_internal <- function(wide, synth_data, Z, progfunc,
     progfunc = tolower(progfunc)
     ## fit augsynth
     if (progfunc == "ridge") {
-        augsynth <- do.call(
-          fit_ridgeaug_formatted,
-          c(
-            list(
-              wide_data          = fit_wide,
-              synth_data         = fit_synth_data,
-              Z                  = Z,
-              V                  = V,
-              scm                = scm,
-              warm_start_weights = warm_start_weights   # <--- NEW
-            ),
-            list(...)
-          )
-        )
-    }
 
-    } else if(progfunc == "none") {
-        ## Just SCM
-        augsynth <- do.call(fit_ridgeaug_formatted,
-                        c(list(wide_data = fit_wide, 
-                               synth_data = fit_synth_data,
-                               Z = Z, ridge = F, scm = T, V = V, ...)))
+        # Ridge ASCM with optional warm start
+        augsynth <- do.call(
+            fit_ridgeaug_formatted,
+            c(
+                list(
+                    wide_data          = fit_wide,
+                    synth_data         = fit_synth_data,
+                    Z                  = Z,
+                    V                  = V,
+                    scm                = scm,
+                    warm_start_weights = warm_start_weights   # <--- NEW
+                ),
+                list(...)
+            )
+        )
+
+    } else if (progfunc == "none") {
+
+        # Pure SCM (still uses Synth QP, so warm start could be passed,
+        # but we leave it off unless you want it included)
+        augsynth <- do.call(
+            fit_ridgeaug_formatted,
+            c(
+                list(
+                    wide_data = fit_wide,
+                    synth_data = fit_synth_data,
+                    Z = Z,
+                    ridge = FALSE,
+                    scm = TRUE,
+                    V = V
+                ),
+                list(...)
+            )
+        )
+
     } else {
-        ## Other outcome models
-        progfuncs = c("ridge", "none", "en", "rf", "gsyn", "mcp",
-                      "cits", "causalimpact", "seq2seq")
+
+        # Other outcome models
+        progfuncs <- c("ridge", "none", "en", "rf", "gsyn", "mcp",
+                       "cits", "causalimpact", "seq2seq")
+
         if (progfunc %in% progfuncs) {
-            augsynth <- fit_augsyn(fit_wide, fit_synth_data, 
-                                   progfunc, scm, ...)
+            augsynth <- fit_augsyn(
+                fit_wide,
+                fit_synth_data,
+                progfunc,
+                scm,
+                ...
+            )
         } else {
             stop("progfunc must be one of 'EN', 'RF', 'GSYN', 'MCP', 'CITS', 'CausalImpact', 'seq2seq', 'None'")
         }
-        
     }
+
 
     augsynth$mhat <- mhat + cbind(matrix(0, nrow = n, ncol = t0), 
                                   augsynth$mhat)
