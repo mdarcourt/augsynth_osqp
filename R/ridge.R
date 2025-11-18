@@ -32,12 +32,16 @@
 #'          \item{"lambda_errors_se"}{"The SE of the MSE associated with each lambda term in lambdas."}
 #' }
 fit_ridgeaug_formatted <- function(wide_data, synth_data,
-                                   Z=NULL, lambda=NULL, ridge=T, scm=T,
+                                   Z = NULL, lambda = NULL,
+                                   ridge = TRUE, scm = TRUE,
                                    lambda_min_ratio = 1e-8, n_lambda = 20,
                                    lambda_max = NULL,
-                                   holdout_length = 1, min_1se = T,
+                                   holdout_length = 1, min_1se = TRUE,
                                    V = NULL,
-                                   residualize = FALSE, ...) {
+                                   residualize = FALSE,
+                                   warm_start_weights = NULL,  # <--- NEW
+                                   ...) {
+
     extra_params = list(...)
     if (length(extra_params) > 0) {
         warning("Unused parameters in using ridge augmented weights: ", paste(names(extra_params), collapse = ", "))
@@ -118,11 +122,15 @@ fit_ridgeaug_formatted <- function(wide_data, synth_data,
         new_synth_data$Z0 <- t(X_c)
         new_synth_data$X0 <- t(X_c)
     }
-    out <- fit_ridgeaug_inner(X_c, X_1, trt, new_synth_data,
-                               lambda, ridge, scm,
-                               lambda_min_ratio, n_lambda,
-                               lambda_max,
-                               holdout_length, min_1se)
+    out <- fit_ridgeaug_inner(
+      X_c, X_1, trt, new_synth_data,
+      lambda, ridge, scm,
+      lambda_min_ratio, n_lambda,
+      lambda_max,
+      holdout_length, min_1se,
+      warm_start_weights = warm_start_weights   # <--- NEW
+    )
+
 
     weights <- out$weights
     synw <- out$synw
@@ -225,18 +233,23 @@ fit_ridgeaug_inner <- function(X_c, X_1, trt, synth_data,
                                lambda, ridge, scm,
                                lambda_min_ratio, n_lambda,
                                lambda_max,
-                               holdout_length, min_1se) {
+                               holdout_length, min_1se,
+                               warm_start_weights = NULL) {
+
     lambda_errors <- NULL
     lambda_errors_se <- NULL
     lambdas <- NULL
 
     ## if SCM fit scm
-    if(scm) {
-        syn <- fit_synth_formatted(synth_data)$weights
+    if (scm) {
+        syn <- fit_synth_formatted(
+          synth_data,
+          warm_start = warm_start_weights   # <--- NEW
+        )$weights
     } else {
-        ## else use uniform weights
         syn <- rep(1 / sum(trt == 0), sum(trt == 0))
     }
+
     if(ridge) {
         if(is.null(lambda)) {
             cv_out <- cv_lambda(X_c, X_1, synth_data, trt, holdout_length, scm,
