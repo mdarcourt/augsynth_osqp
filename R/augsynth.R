@@ -112,12 +112,23 @@ fit_augsynth_internal <- function(wide, synth_data, Z, progfunc,
     }
     progfunc = tolower(progfunc)
     ## fit augsynth
-    if(progfunc == "ridge") {
-        # Ridge ASCM
-        augsynth <- do.call(fit_ridgeaug_formatted,
-                            list(wide_data = fit_wide,
-                                 synth_data = fit_synth_data,
-                                 Z = Z, V = V, scm = scm, ...))
+    if (progfunc == "ridge") {
+        augsynth <- do.call(
+          fit_ridgeaug_formatted,
+          c(
+            list(
+              wide_data          = fit_wide,
+              synth_data         = fit_synth_data,
+              Z                  = Z,
+              V                  = V,
+              scm                = scm,
+              warm_start_weights = warm_start_weights   # <--- NEW
+            ),
+            list(...)
+          )
+        )
+    }
+
     } else if(progfunc == "none") {
         ## Just SCM
         augsynth <- do.call(fit_ridgeaug_formatted,
