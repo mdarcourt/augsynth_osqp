@@ -89,7 +89,10 @@ single_augsynth <- function(form, unit, time, t_int, data,
 #' @noRd
 #' 
 fit_augsynth_internal <- function(wide, synth_data, Z, progfunc,
-                                  scm, fixedeff, V = NULL, ...) {
+                                  scm, fixedeff, V = NULL,
+                                  warm_start_weights = NULL,   # <--- NEW
+                                  ...) {
+
 
     n <- nrow(wide$X)
     t0 <- ncol(wide$X)
