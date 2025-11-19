@@ -94,55 +94,66 @@ synth_qp <- function(X1, X0, V, warm_start = NULL) {
       pars = settings
     )
 
-    ########################################################################
-    #                 WARM START — WITH HARD VISUAL CONFIRMATION
-    ########################################################################
-    if (!is.null(warm_start)) {
+###############################################################
+#           UNIVERSAL WARM START COMPATIBILITY LAYER
+###############################################################
+warm_used <- FALSE    # <---- track acceptance
 
-      warm_start <- as.numeric(warm_start)
+if (!is.null(warm_start)) {
 
-      if (length(warm_start) == n0) {
+  warm_start <- as.numeric(warm_start)
 
-        cat("\n=====================================\n")
-        cat("Applying warm start (length =", n0, ")\n")
-        cat("First 5 warm-start values:", paste(round(warm_start[1:5], 6), collapse = ", "), "\n")
+  if (length(warm_start) == n0) {
 
-        # Detect which method the OSQP object supports
-        if ("WarmStart" %in% names(model)) {
-          cat("Using model$WarmStart(x = ...)\n")
-          model$WarmStart(x = warm_start)
+    # ---- Try all available APIs ----
+    if ("WarmStart" %in% names(model)) {
+      model$WarmStart(x = warm_start)
 
-        } else if ("warm_start_x" %in% names(model)) {
-          cat("Using model$warm_start_x(x = ...)\n")
-          model$warm_start_x(x = warm_start)
+    } else if ("warm_start_x" %in% names(model)) {
+      model$warm_start_x(x = warm_start)
 
-        } else if ("warm_start" %in% names(model)) {
-          cat("Using model$warm_start(x = ...)\n")
-          model$warm_start(x = warm_start)
+    } else if ("warm_start" %in% names(model)) {
+      model$warm_start(x = warm_start)
 
-        } else {
-          cat("WARNING: This OSQP build does NOT support warm-start APIs.\n")
+    } else {
+      warning("OSQP warm-start not supported in this build.")
+    }
+
+    # ---- READ BACK INTERNAL x TO SEE IF IT STUCK ----
+    # compatibility for all OSQP versions
+    internal_x <- tryCatch({
+      model$x     # some builds use $x
+    }, error = function(e) {
+      tryCatch(model$GetParams()$x, error = function(e2) NULL)
+    })
+
+    # check if accepted
+    if (!is.null(internal_x)) {
+      if (length(internal_x) == length(warm_start)) {
+        # Test equality (within numerical tolerance)
+        if (max(abs(internal_x - warm_start)) < 1e-6) {
+          warm_used <- TRUE
         }
-
-        # Inspect model state after warm-start
-        ws <- tryCatch(model$GetData("x"), error = function(e) NA)
-
-        if (!all(is.na(ws))) {
-          cat("Warm start accepted. First 5 internal x values:",
-              paste(round(ws[1:5], 6), collapse = ", "), "\n")
-        } else {
-          cat("Warm start NOT applied (model returned empty x).\n")
-        }
-
-        cat("=====================================\n\n")
-
-      } else {
-        warning("warm_start length (", length(warm_start),
-                ") != number of donors (", n0, "); ignoring warm_start.")
       }
     }
 
-    ########################################################################
+    # -------------------------
+    # Logging
+    # -------------------------
+    if (warm_used) {
+      cat("\n>>> Warm-start ACCEPTED (", length(warm_start), " weights)\n")
+    } else {
+      cat("\n>>> Warm-start REJECTED by OSQP\n")
+    }
+
+  } else {
+    warning("warm_start length (", length(warm_start),
+            ") != number of donors (", n0, "); ignoring warm_start.")
+  }
+}
+
+###############################################################
+
 
     sol <- model$Solve()
 
