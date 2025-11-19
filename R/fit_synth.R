@@ -68,97 +68,88 @@ fit_synth_formatted <- function(synth_data, V = NULL, warm_start = NULL) {
 #' @noRd
 synth_qp <- function(X1, X0, V, warm_start = NULL) {
 
-    Pmat <- X0 %*% V %*% t(X0)
-    qvec <- - t(X1) %*% V %*% t(X0)
+  Pmat <- X0 %*% V %*% t(X0)
+  qvec <- - t(X1) %*% V %*% t(X0)
 
-    n0 <- nrow(X0)
+  n0 <- nrow(X0)
 
-    A <- rbind(rep(1, n0), diag(n0))
-    l <- c(1, numeric(n0))
-    u <- c(1, rep(1, n0))
+  A <- rbind(rep(1, n0), diag(n0))
+  l <- c(1, numeric(n0))
+  u <- c(1, rep(1, n0))
 
-    # Turn on verbose so OSQP prints progress (you will SEE warm-start effects)
-    settings <- osqp::osqpSettings(
-      verbose = FALSE,
-      eps_rel = 1e-8,
-      eps_abs = 1e-8
-    )
+  # Quiet OSQP (no iteration spam)
+  settings <- osqp::osqpSettings(
+    verbose = FALSE,   # NO printing
+    eps_rel = 1e-6,    # looser tolerance so fewer checks
+    eps_abs = 1e-6
+  )
 
-    # Build OSQP model
-    model <- osqp::osqp(
-      P    = Pmat,
-      q    = as.numeric(qvec),
-      A    = A,
-      l    = l,
-      u    = u,
-      pars = settings
-    )
+  # Build solver model
+  model <- osqp::osqp(
+    P    = Pmat,
+    q    = as.numeric(qvec),
+    A    = A,
+    l    = l,
+    u    = u,
+    pars = settings
+  )
 
-###############################################################
-#           UNIVERSAL WARM START COMPATIBILITY LAYER
-###############################################################
-warm_used <- FALSE    # <---- track acceptance
+  ###############################################################
+  #        UNIVERSAL WARM-START + ACCEPTANCE DETECTOR
+  ###############################################################
+  warm_status <- "NOT_USED"
 
-if (!is.null(warm_start)) {
+  if (!is.null(warm_start)) {
 
-  warm_start <- as.numeric(warm_start)
+    warm_start <- as.numeric(warm_start)
 
-  if (length(warm_start) == n0) {
-
-    # ---- Try all available APIs ----
-    if ("WarmStart" %in% names(model)) {
-      model$WarmStart(x = warm_start)
-
-    } else if ("warm_start_x" %in% names(model)) {
-      model$warm_start_x(x = warm_start)
-
-    } else if ("warm_start" %in% names(model)) {
-      model$warm_start(x = warm_start)
+    if (length(warm_start) != n0) {
+      warm_status <- paste0("REJECTED_LENGTH(", length(warm_start), " vs ", n0, ")")
 
     } else {
-      warning("OSQP warm-start not supported in this build.")
-    }
 
-    # ---- READ BACK INTERNAL x TO SEE IF IT STUCK ----
-    # compatibility for all OSQP versions
-    internal_x <- tryCatch({
-      model$x     # some builds use $x
-    }, error = function(e) {
-      tryCatch(model$GetParams()$x, error = function(e2) NULL)
-    })
+      # ---- Try newest API first ----
+      applied <- FALSE
+      if ("WarmStart" %in% names(model)) {
+        model$WarmStart(x = warm_start)
+        applied <- TRUE
+      } else if ("warm_start" %in% names(model)) {
+        model$warm_start(x = warm_start)
+        applied <- TRUE
+      } else if ("warm_start_x" %in% names(model)) {
+        model$warm_start_x(x = warm_start)
+        applied <- TRUE
+      } else {
+        warm_status <- "REJECTED_NO_API"
+      }
 
-    # check if accepted
-    if (!is.null(internal_x)) {
-      if (length(internal_x) == length(warm_start)) {
-        # Test equality (within numerical tolerance)
-        if (max(abs(internal_x - warm_start)) < 1e-6) {
-          warm_used <- TRUE
+      if (applied) {
+        # check whether warm start stuck
+        internal_x <- tryCatch(model$x, error = function(e) NULL)
+
+        if (!is.null(internal_x) && length(internal_x) == length(warm_start)) {
+          if (max(abs(internal_x - warm_start)) < 1e-6) {
+            warm_status <- "ACCEPTED"
+          } else {
+            warm_status <- "REJECTED_SOLVER_MODIFIED_X"
+          }
+        } else {
+          warm_status <- "REJECTED_INTERNAL_EMPTY"
         }
       }
     }
-
-    # -------------------------
-    # Logging
-    # -------------------------
-    if (warm_used) {
-      cat("\n>>> Warm-start ACCEPTED (", length(warm_start), " weights)\n")
-    } else {
-      cat("\n>>> Warm-start REJECTED by OSQP\n")
-    }
-
-  } else {
-    warning("warm_start length (", length(warm_start),
-            ") != number of donors (", n0, "); ignoring warm_start.")
   }
+
+  ###############################################################
+
+  sol <- model$Solve()
+
+  return(list(
+    x = sol$x,
+    warm_status = warm_status
+  ))
 }
 
-###############################################################
-
-
-    sol <- model$Solve()
-
-    return(sol$x)
-}
 
 
 
