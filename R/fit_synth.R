@@ -79,9 +79,9 @@ synth_qp <- function(X1, X0, V, warm_start = NULL) {
 
     # Turn on verbose so OSQP prints progress (you will SEE warm-start effects)
     settings <- osqp::osqpSettings(
-      verbose = TRUE,
-      eps_rel = 1e-3,
-      eps_abs = 1e-3
+      verbose = FALSE,
+      eps_rel = 1e-8,
+      eps_abs = 1e-8
     )
 
     # Build OSQP model
