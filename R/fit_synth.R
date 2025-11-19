@@ -77,8 +77,9 @@ synth_qp <- function(X1, X0, V, warm_start = NULL) {
     l <- c(1, numeric(n0))
     u <- c(1, rep(1, n0))
 
+    # Turn on verbose so OSQP prints progress (you will SEE warm-start effects)
     settings <- osqp::osqpSettings(
-      verbose = FALSE,
+      verbose = TRUE,
       eps_rel = 1e-8,
       eps_abs = 1e-8
     )
@@ -93,31 +94,47 @@ synth_qp <- function(X1, X0, V, warm_start = NULL) {
       pars = settings
     )
 
-    ###############################################################
-    #           UNIVERSAL WARM START COMPATIBILITY LAYER
-    ###############################################################
+    ########################################################################
+    #                 WARM START — WITH HARD VISUAL CONFIRMATION
+    ########################################################################
     if (!is.null(warm_start)) {
 
       warm_start <- as.numeric(warm_start)
 
       if (length(warm_start) == n0) {
 
-        # OSQP 0.6.3.3 (YOUR VERSION) — uses WarmStart(x = )
+        cat("\n=====================================\n")
+        cat("Applying warm start (length =", n0, ")\n")
+        cat("First 5 warm-start values:", paste(round(warm_start[1:5], 6), collapse = ", "), "\n")
+
+        # Detect which method the OSQP object supports
         if ("WarmStart" %in% names(model)) {
+          cat("Using model$WarmStart(x = ...)\n")
           model$WarmStart(x = warm_start)
 
-        # Older OSQP versions (< 0.6.2)
         } else if ("warm_start_x" %in% names(model)) {
+          cat("Using model$warm_start_x(x = ...)\n")
           model$warm_start_x(x = warm_start)
 
-        # Some 2022 builds used warm_start()
         } else if ("warm_start" %in% names(model)) {
+          cat("Using model$warm_start(x = ...)\n")
           model$warm_start(x = warm_start)
 
-        # No warm-start API available
         } else {
-          warning("OSQP warm-start not supported in this build.")
+          cat("WARNING: This OSQP build does NOT support warm-start APIs.\n")
         }
+
+        # Inspect model state after warm-start
+        ws <- tryCatch(model$GetData("x"), error = function(e) NA)
+
+        if (!all(is.na(ws))) {
+          cat("Warm start accepted. First 5 internal x values:",
+              paste(round(ws[1:5], 6), collapse = ", "), "\n")
+        } else {
+          cat("Warm start NOT applied (model returned empty x).\n")
+        }
+
+        cat("=====================================\n\n")
 
       } else {
         warning("warm_start length (", length(warm_start),
@@ -125,11 +142,12 @@ synth_qp <- function(X1, X0, V, warm_start = NULL) {
       }
     }
 
-    ###############################################################
+    ########################################################################
 
     sol <- model$Solve()
 
     return(sol$x)
 }
+
 
 
