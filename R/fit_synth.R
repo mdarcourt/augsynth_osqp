@@ -83,7 +83,7 @@ synth_qp <- function(X1, X0, V, warm_start = NULL) {
       eps_abs = 1e-8
     )
 
-    # Build OSQP model instead of one-shot solve
+    # Build OSQP model
     model <- osqp::osqp(
       P    = Pmat,
       q    = as.numeric(qvec),
@@ -93,19 +93,43 @@ synth_qp <- function(X1, X0, V, warm_start = NULL) {
       pars = settings
     )
 
-    # Optional warm start
+    ###############################################################
+    #           UNIVERSAL WARM START COMPATIBILITY LAYER
+    ###############################################################
     if (!is.null(warm_start)) {
+
       warm_start <- as.numeric(warm_start)
+
       if (length(warm_start) == n0) {
-        model$warm_start(x = warm_start)
+
+        # OSQP 0.6.3.3 (YOUR VERSION) — uses WarmStart(x = )
+        if ("WarmStart" %in% names(model)) {
+          model$WarmStart(x = warm_start)
+
+        # Older OSQP versions (< 0.6.2)
+        } else if ("warm_start_x" %in% names(model)) {
+          model$warm_start_x(x = warm_start)
+
+        # Some 2022 builds used warm_start()
+        } else if ("warm_start" %in% names(model)) {
+          model$warm_start(x = warm_start)
+
+        # No warm-start API available
+        } else {
+          warning("OSQP warm-start not supported in this build.")
+        }
+
       } else {
         warning("warm_start length (", length(warm_start),
                 ") != number of donors (", n0, "); ignoring warm_start.")
       }
     }
 
+    ###############################################################
+
     sol <- model$Solve()
 
     return(sol$x)
 }
+
 
